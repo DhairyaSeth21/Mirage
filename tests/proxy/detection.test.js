@@ -91,5 +91,5 @@ describe('proxy detection integration', () => {
     expect(lastEntry.level).toBeGreaterThanOrEqual(1);
 
     await new Promise((resolve) => proxy.close(resolve));
-  });
+  }, 30000); // latency injection at level 1+ makes this slow
 });
