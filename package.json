@@ -1,0 +1,28 @@
+{
+  "name": "mirage",
+  "version": "0.1.0",
+  "description": "Adaptive API defense — detects API learning behavior and disrupts attacker models through inline adaptive deception",
+  "type": "module",
+  "scripts": {
+    "api": "node src/api/server.js",
+    "proxy": "node src/proxy/server.js",
+    "dev": "concurrently \"npm run api\" \"npm run proxy\"",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test:watch": "node --experimental-vm-modules node_modules/.bin/jest --watch",
+    "seed": "node src/api/seed/seedDatabase.js"
+  },
+  "keywords": ["api-security", "reverse-proxy", "bot-detection", "deception", "enumeration-detection"],
+  "author": "Dhairya Seth",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.0",
+    "better-sqlite3": "^11.0.0",
+    "http-proxy": "^1.18.1",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "@jest/globals": "^29.7.0",
+    "concurrently": "^9.0.0"
+  }
+}
