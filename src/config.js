@@ -12,23 +12,23 @@ export const config = {
   WINDOW_SIZE_MS: 5 * 60 * 1000, // 5 minutes
 
   // Detection thresholds (score = value / threshold, capped at 1.0)
-  COVERAGE_THRESHOLD: 8,
-  ENUM_THRESHOLD: 20,
-  TRAVERSAL_THRESHOLD: 5,
+  COVERAGE_THRESHOLD: 5,
+  ENUM_THRESHOLD: 10,
+  TRAVERSAL_THRESHOLD: 3,
   CV_THRESHOLD: 0.5,
 
   // Pressure score weights (must sum to 1.0)
   WEIGHTS: {
-    coverage: 0.20,
-    enumeration: 0.25,
+    coverage: 0.15,
+    enumeration: 0.30,
     errorAdaptation: 0.20,
     traversal: 0.15,
-    timing: 0.10,
-    methodUniformity: 0.10,
+    timing: 0.15,
+    methodUniformity: 0.05,
   },
 
   // Escalation level thresholds
-  LEVEL_THRESHOLDS: [0.3, 0.5, 0.7, 0.9],
+  LEVEL_THRESHOLDS: [0.25, 0.4, 0.55, 0.8],
 
   // Level 1: Latency injection
   LATENCY_MIN_MS: 50,

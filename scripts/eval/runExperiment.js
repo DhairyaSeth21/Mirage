@@ -19,11 +19,12 @@ import { computeMetrics } from './computeMetrics.js';
 import { attackerModelA } from '../traffic/attackerModelA.js';
 import { attackerModelB } from '../traffic/attackerModelB.js';
 import { attackerModelC } from '../traffic/attackerModelC.js';
+import { createTracker } from '../../src/tracking/tracker.js';
 
 /** Default attacker parameters kept intentionally small for fast experiment runs */
 const ATTACKER_DEFAULTS = {
   model_a: { endId: 200, intervalMs: 50 },
-  model_b: { maxProbeId: 200 },
+  model_b: { maxProbeId: 500 }, // must exceed valid ID range (1-200) so binary search hits 404s → errorAdaptation fires
   model_c: { maxUsers: 20 },
 };
 
@@ -113,10 +114,11 @@ export async function runExperiment({
   const expLogger = createLogger(requestsPath);
 
   // ── Start proxy server ─────────────────────────────────────────────────────
+  const experimentTracker = clientTracker ?? createTracker();
   const proxyServer = createProxyServer(upstreamUrl, {
     mode,
     logger: expLogger,
-    ...(clientTracker && { clientTracker }),
+    clientTracker: experimentTracker,
     ...(weights && { weights }),
   });
   const actualProxyPort = await listenAsync(proxyServer, proxyPort);

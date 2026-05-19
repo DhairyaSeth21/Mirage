@@ -86,7 +86,7 @@ describe('proxy detection integration', () => {
     }
 
     const lastEntry = logEntries[logEntries.length - 1];
-    // 30 unique IDs on /users/:id — enumeration = min(30/20, 1.0) = 1.0
+    // 30 unique IDs on /users/:id — enumeration = min(30/ENUM_THRESHOLD, 1.0) = 1.0
     expect(lastEntry.signals.enumeration).toBeGreaterThan(0.5);
     expect(lastEntry.level).toBeGreaterThanOrEqual(1);
 

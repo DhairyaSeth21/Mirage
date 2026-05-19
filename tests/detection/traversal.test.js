@@ -1,5 +1,6 @@
 import { describe, test, expect } from '@jest/globals';
 import { computeTraversal } from '../../src/detection/traversal.js';
+import { config } from '../../src/config.js';
 
 function makeRequest(firstId, route) {
   return {
@@ -37,18 +38,18 @@ describe('computeTraversal', () => {
       makeRequest(1, '/users/:id/orders'),
       makeRequest(1, '/users/:id/profile'),
     ]);
-    // 1 chained ID / TRAVERSAL_THRESHOLD(5) = 0.2
-    expect(computeTraversal(metrics)).toBeCloseTo(0.2, 5);
+    // 1 chained ID / TRAVERSAL_THRESHOLD
+    expect(computeTraversal(metrics)).toBeCloseTo(1 / config.TRAVERSAL_THRESHOLD, 5);
   });
 
-  test('normal user: one ID with sub-resources → score 0.2 (below suspicious)', () => {
+  test('normal user: one ID with sub-resources → score below suspicious', () => {
     const metrics = makeMetrics([
       makeRequest(42, '/users/:id'),
       makeRequest(42, '/users/:id/orders'),
       makeRequest(42, '/users/:id/profile'),
     ]);
     const score = computeTraversal(metrics);
-    expect(score).toBeCloseTo(0.2, 5);
+    expect(score).toBeCloseTo(1 / config.TRAVERSAL_THRESHOLD, 5);
     expect(score).toBeLessThan(0.5);
   });
 

@@ -2,23 +2,23 @@ import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
 import http from 'http';
 import { createProxyServer } from '../../src/proxy/server.js';
 
-// Pre-built metrics that yield level 3 pressure (~0.85)
-// coverage(1.0)*0.20 + enum(1.0)*0.25 + errorAdapt(1.0)*0.20 + timing(1.0)*0.10 + methodUniformity(1.0)*0.10 = 0.85
+// Pre-built metrics that yield level 3 pressure (~0.65)
+// With LEVEL_THRESHOLDS [0.25, 0.4, 0.55, 0.8]:
+// coverage(1.0)*0.20 + enum(1.0)*0.25 + timing(1.0)*0.10 + methodUniformity(1.0)*0.10 = 0.65 → level 3
 function buildLevel3Metrics() {
-  const requests = [];
-  // Error adaptation: 10 pairs of 404 → different ID
-  for (let i = 0; i < 10; i++) {
-    requests.push({ normalizedRoute: '/users/:id', extractedIds: [100 + i], responseStatus: 404 });
-    requests.push({ normalizedRoute: '/users/:id', extractedIds: [200 + i], responseStatus: 200 });
-  }
+  const requests = Array.from({ length: 20 }, (_, i) => ({
+    normalizedRoute: '/users/:id',
+    extractedIds: [i + 1],
+    responseStatus: 200,
+  }));
   return {
-    totalRequests: 30,
+    totalRequests: 20,
     uniqueRoutes: new Set([
       '/users', '/users/:id', '/users/:id/orders', '/users/:id/profile',
       '/orders/:id', '/orders/:id/items', '/items/:id', '/auth/login',
     ]),
     idsPerRoute: new Map([
-      ['/users/:id', new Set(Array.from({ length: 20 }, (_, i) => i + 1))],
+      ['/users/:id', new Set(Array.from({ length: 10 }, (_, i) => i + 1))],
     ]),
     statusCodes: requests.map((r) => r.responseStatus),
     intervals: Array(requests.length - 1).fill(100), // regular → timing = 1.0
@@ -40,19 +40,18 @@ function buildLevel0Metrics() {
 }
 
 function buildLevel1Metrics() {
-  // enough enumeration to cross 0.3 threshold but stay below 0.5
-  // enum(0.5)*0.25 + coverage(0.125)*0.20 + method(1.0)*0.10 = 0.125+0.025+0.10 = 0.25 → level 0
-  // Need more: add timing(1.0)*0.10 = 0.35 → level 1
+  // With LEVEL_THRESHOLDS [0.25, 0.4, 0.55, 0.8]: target pressure in [0.25, 0.40) → level 1
+  // enum(3/10=0.3)*0.25 + coverage(2/5=0.4)*0.20 + timing(1.0)*0.10 + method(1.0)*0.10 = 0.355
   return {
     totalRequests: 10,
-    uniqueRoutes: new Set(['/users/:id']),
-    idsPerRoute: new Map([['/users/:id', new Set(Array.from({ length: 10 }, (_, i) => i + 1))]]),
+    uniqueRoutes: new Set(['/users/:id', '/orders/:id']),
+    idsPerRoute: new Map([['/users/:id', new Set([1, 2, 3])]]),
     statusCodes: Array(10).fill(200),
     intervals: Array(9).fill(100), // regular timing → score 1.0
     methodCounts: { GET: 10 },
     requests: Array.from({ length: 10 }, (_, i) => ({
       normalizedRoute: '/users/:id',
-      extractedIds: [i + 1],
+      extractedIds: [(i % 3) + 1],
       responseStatus: 200,
     })),
   };
