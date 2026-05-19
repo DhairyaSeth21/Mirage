@@ -11,7 +11,11 @@
     "test:watch": "node --experimental-vm-modules --no-experimental-webstorage node_modules/.bin/jest --watch",
     "seed": "node src/api/seed/seedDatabase.js",
     "traffic": "node scripts/traffic/orchestrator.js",
-    "export-dataset": "node scripts/traffic/exportDataset.js"
+    "export-dataset": "node scripts/traffic/exportDataset.js",
+    "eval": "node scripts/eval/runAll.js",
+    "eval:single": "node scripts/eval/runExperiment.js",
+    "ablation": "node scripts/eval/ablation.js",
+    "dashboard": "node scripts/eval/dashboard.js"
   },
   "keywords": ["api-security", "reverse-proxy", "bot-detection", "deception", "enumeration-detection"],
   "author": "Dhairya Seth",

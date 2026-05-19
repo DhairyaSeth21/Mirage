@@ -7,6 +7,37 @@ import { computeTiming } from './timing.js';
 import { computeMethodUniformity } from './methodUniformity.js';
 
 /**
+ * Runs all 6 detection signals and combines them using the provided weights object.
+ * Weights are expected to sum to 1.0; any signal key absent from weights contributes 0.
+ *
+ * @param {object} metrics - Output of tracker.computeMetrics()
+ * @param {object} weights - { coverage, enumeration, errorAdaptation, traversal, timing, methodUniformity }
+ * @returns {{ signals: object, pressure: number, level: number }}
+ */
+export function computePressureWith(metrics, weights) {
+  const signals = {
+    coverage: computeCoverage(metrics),
+    enumeration: computeEnumeration(metrics),
+    errorAdaptation: computeErrorAdaptation(metrics),
+    traversal: computeTraversal(metrics),
+    timing: computeTiming(metrics),
+    methodUniformity: computeMethodUniformity(metrics),
+  };
+
+  const pressure =
+    signals.coverage * (weights.coverage ?? 0) +
+    signals.enumeration * (weights.enumeration ?? 0) +
+    signals.errorAdaptation * (weights.errorAdaptation ?? 0) +
+    signals.traversal * (weights.traversal ?? 0) +
+    signals.timing * (weights.timing ?? 0) +
+    signals.methodUniformity * (weights.methodUniformity ?? 0);
+
+  const level = config.LEVEL_THRESHOLDS.filter((threshold) => pressure >= threshold).length;
+
+  return { signals, pressure, level };
+}
+
+/**
  * Runs all 6 detection signals against a metrics snapshot and combines them
  * into a single weighted pressure score and escalation level.
  *
@@ -18,25 +49,5 @@ import { computeMethodUniformity } from './methodUniformity.js';
  * }}
  */
 export function computePressure(metrics) {
-  const signals = {
-    coverage: computeCoverage(metrics),
-    enumeration: computeEnumeration(metrics),
-    errorAdaptation: computeErrorAdaptation(metrics),
-    traversal: computeTraversal(metrics),
-    timing: computeTiming(metrics),
-    methodUniformity: computeMethodUniformity(metrics),
-  };
-
-  const pressure =
-    signals.coverage * config.WEIGHTS.coverage +
-    signals.enumeration * config.WEIGHTS.enumeration +
-    signals.errorAdaptation * config.WEIGHTS.errorAdaptation +
-    signals.traversal * config.WEIGHTS.traversal +
-    signals.timing * config.WEIGHTS.timing +
-    signals.methodUniformity * config.WEIGHTS.methodUniformity;
-
-  // Count how many level thresholds the pressure score exceeds
-  const level = config.LEVEL_THRESHOLDS.filter((threshold) => pressure >= threshold).length;
-
-  return { signals, pressure, level };
+  return computePressureWith(metrics, config.WEIGHTS);
 }

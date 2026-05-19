@@ -6,34 +6,36 @@ import { logRequest as defaultLogRequest } from '../logging/logger.js';
 import { getFingerprint } from '../tracking/identifier.js';
 import { tracker as defaultTracker } from '../tracking/tracker.js';
 import { normalizeRoute } from '../detection/routeNormalizer.js';
-import { computePressure } from '../detection/pressure.js';
+import { computePressureWith } from '../detection/pressure.js';
 import { computeLatency } from '../response/latency.js';
 import { computeThrottle } from '../response/throttle.js';
 import { poisonResponse } from '../response/poison.js';
 import { generateMarker, embedMarker } from '../response/attribution.js';
+import { createRateLimiter } from '../response/rateLimit.js';
 
 /**
- * Creates an HTTP reverse proxy that:
- *   - Buffers every upstream response so it can be inspected and modified
- *   - Identifies clients by composite fingerprint
- *   - Scores every request with the 6-signal pressure model
- *   - Level 1+: injects random latency
- *   - Level 2+: throttles the most-enumerated route
- *   - Level 3+: poisons response bodies (decoys, field mutation, status flips)
- *   - Level 3+: embeds attribution markers in individual record responses
- *   - Returns 502 if the upstream is unreachable
- *   - Logs a structured JSON entry per request
+ * Creates an HTTP reverse proxy supporting three operation modes:
+ *   - 'undefended'   — transparent pass-through, no detection or modification
+ *   - 'ratelimit'    — token-bucket at 100 req/min per client; returns 429 when exceeded
+ *   - 'full-defense' — (default) full Mirage: detection, latency, throttling, poisoning, markers
+ *
+ * All modes log a structured JSON entry per request (includes user_agent for client-type analysis).
  *
  * @param {string} upstreamUrl - Full URL of the upstream API (e.g. "http://localhost:4000")
  * @param {{
+ *   mode?: 'undefended' | 'ratelimit' | 'full-defense',
  *   logger?: function,
  *   clientTracker?: { addRequest: function, computeMetrics: function },
+ *   weights?: object,
  * }} [options]
  * @returns {http.Server}
  */
 export function createProxyServer(upstreamUrl, options = {}) {
+  const mode = options.mode ?? 'full-defense';
   const logger = options.logger ?? defaultLogRequest;
   const clientTracker = options.clientTracker ?? defaultTracker;
+  const weights = options.weights ?? config.WEIGHTS;
+  const rateLimiter = createRateLimiter();
 
   // selfHandleResponse: true — we buffer and send responses ourselves
   const proxy = httpProxy.createProxyServer({ selfHandleResponse: true });
@@ -43,12 +45,12 @@ export function createProxyServer(upstreamUrl, options = {}) {
     proxyReq.setHeader('accept-encoding', 'identity');
   });
 
-  proxy.on('error', (err, req, res) => {
+  proxy.on('error', (_err, req, res) => {
     const startTime = req._mirageStartTime ?? Date.now();
     const clientId = req._mirageClientId ?? '';
     const normalizedRoute = req._mirageNormalizedRoute ?? req.url ?? '/';
 
-    if (clientId) {
+    if (clientId && mode === 'full-defense') {
       clientTracker.addRequest(clientId, {
         timestamp: startTime,
         method: req.method,
@@ -65,6 +67,7 @@ export function createProxyServer(upstreamUrl, options = {}) {
     logger({
       timestamp: new Date(startTime).toISOString(),
       clientId,
+      user_agent: req.headers['user-agent'] ?? '',
       method: req.method,
       path: req.url,
       normalizedRoute,
@@ -90,62 +93,68 @@ export function createProxyServer(upstreamUrl, options = {}) {
       const clientId = req._mirageClientId;
       const normalizedRoute = req._mirageNormalizedRoute;
       const extractedIds = req._mirageExtractedIds;
-
-      // Track now that we have the upstream status
-      clientTracker.addRequest(clientId, {
-        timestamp: startTime,
-        method: req.method,
-        path: req.url,
-        normalizedRoute,
-        extractedIds,
-        responseStatus: proxyRes.statusCode,
-      });
-
-      const metrics = clientTracker.computeMetrics(clientId);
-      const { signals, pressure, level } = computePressure(metrics);
-
-      const latencyDelay = computeLatency(level);
-      const throttleDelay = computeThrottle(level, metrics, normalizedRoute);
-      const totalDelay = Math.round(latencyDelay + throttleDelay);
+      const userAgent = req.headers['user-agent'] ?? '';
 
       const rawBody = Buffer.concat(chunks).toString('utf-8');
       let sentStatus = proxyRes.statusCode;
       let responseBody = rawBody;
       const modifications = [];
       let marker = null;
+      let pressure = 0;
+      let level = 0;
+      let signals = {};
+      let totalDelay = 0;
 
-      if (level >= 3) {
-        // Structural poisoning
-        try {
-          const requestInfo = { normalizedRoute, extractedIds, clientId };
-          const poisoned = poisonResponse(level, requestInfo, { status: proxyRes.statusCode, body: rawBody }, metrics);
-          responseBody = poisoned.body;
-          sentStatus = poisoned.status;
-          modifications.push(...poisoned.modifications);
-        } catch {
-          // Non-JSON or unexpected body — pass through
-        }
+      if (mode === 'full-defense') {
+        clientTracker.addRequest(clientId, {
+          timestamp: startTime,
+          method: req.method,
+          path: req.url,
+          normalizedRoute,
+          extractedIds,
+          responseStatus: proxyRes.statusCode,
+        });
 
-        // Attribution marker embedding
-        try {
-          const parsedBody = JSON.parse(responseBody);
-          if (parsedBody && typeof parsedBody === 'object') {
-            marker = generateMarker(clientId);
-            const markedBody = embedMarker(parsedBody, marker);
-            responseBody = JSON.stringify(markedBody);
-            modifications.push('marker_embedded');
+        const metrics = clientTracker.computeMetrics(clientId);
+        ({ signals, pressure, level } = computePressureWith(metrics, weights));
 
-            logger({
-              event: 'attribution_marker',
-              marker,
-              sessionId: clientId,
-              clientId,
-              path: req.url,
-              timestamp: new Date(startTime).toISOString(),
-            });
+        const latencyDelay = computeLatency(level);
+        const throttleDelay = computeThrottle(level, metrics, normalizedRoute);
+        totalDelay = Math.round(latencyDelay + throttleDelay);
+
+        if (level >= 3) {
+          // Structural poisoning
+          try {
+            const requestInfo = { normalizedRoute, extractedIds, clientId };
+            const poisoned = poisonResponse(level, requestInfo, { status: proxyRes.statusCode, body: rawBody }, metrics);
+            responseBody = poisoned.body;
+            sentStatus = poisoned.status;
+            modifications.push(...poisoned.modifications);
+          } catch {
+            // Non-JSON or unexpected body — pass through
           }
-        } catch {
-          // Non-JSON — skip marker
+
+          // Attribution marker embedding
+          try {
+            const parsedBody = JSON.parse(responseBody);
+            if (parsedBody && typeof parsedBody === 'object') {
+              marker = generateMarker(clientId);
+              const markedBody = embedMarker(parsedBody, marker);
+              responseBody = JSON.stringify(markedBody);
+              modifications.push('marker_embedded');
+
+              logger({
+                event: 'attribution_marker',
+                marker,
+                sessionId: clientId,
+                clientId,
+                path: req.url,
+                timestamp: new Date(startTime).toISOString(),
+              });
+            }
+          } catch {
+            // Non-JSON — skip marker
+          }
         }
       }
 
@@ -172,6 +181,7 @@ export function createProxyServer(upstreamUrl, options = {}) {
       logger({
         timestamp: new Date(startTime).toISOString(),
         clientId,
+        user_agent: userAgent,
         method: req.method,
         path: req.url,
         normalizedRoute,
@@ -198,6 +208,33 @@ export function createProxyServer(upstreamUrl, options = {}) {
     req._mirageClientId = clientId;
     req._mirageNormalizedRoute = normalizedRoute;
     req._mirageExtractedIds = extractedIds;
+
+    // Rate-limit mode: check token bucket before forwarding to upstream
+    if (mode === 'ratelimit') {
+      if (!rateLimiter.isAllowed(clientId)) {
+        res.writeHead(429, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Too Many Requests' }));
+        logger({
+          timestamp: new Date(startTime).toISOString(),
+          clientId,
+          user_agent: req.headers['user-agent'] ?? '',
+          method: req.method,
+          path: req.url,
+          normalizedRoute,
+          pressure: 0,
+          level: 0,
+          signals: {},
+          upstream_status: 429,
+          sent_status: 429,
+          response_modified: false,
+          modifications: [],
+          marker: null,
+          latency_added_ms: 0,
+          total_latency_ms: Date.now() - startTime,
+        });
+        return;
+      }
+    }
 
     proxy.web(req, res, { target: upstreamUrl });
   });
