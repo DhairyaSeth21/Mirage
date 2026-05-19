@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --obsidian: #060606;
+    --obsidian-2: #0d0d0d;
+    --sand: #e8e8e6;
+    --sand-dim: #6c6c6a;
+    --amber: #b8b8b6;
+    --amber-deep: #888;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--obsidian);
+    color: var(--sand);
+    font-family: "Space Grotesk", -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+}
+
+::selection { background: var(--sand); color: var(--obsidian); }
+
+.font-mono   { font-family: "JetBrains Mono", monospace; }
+.font-display{ font-family: "Space Grotesk", sans-serif; letter-spacing: -0.04em; }
+
+.mirage-title {
+    font-family: "Cutive Mono", "Courier New", monospace;
+    font-weight: 400;
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 18px rgba(220,220,220,0.18), 0 0 60px rgba(220,220,220,0.06);
+}
+
+.grain::before {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 100;
+    opacity: 0.06; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.9'/></svg>");
+}
+
+@keyframes pulse-dot { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+.pulse-dot { animation: pulse-dot 2.4s ease-in-out infinite; }
+
+@keyframes scan-band {
+    0%   { transform: translateY(-20vh); }
+    100% { transform: translateY(120vh); }
+}
+.scan-band {
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(255,255,255,0.025) 45%,
+        rgba(255,255,255,0.05)  50%,
+        rgba(255,255,255,0.025) 55%,
+        transparent 100%
+    );
+    animation: scan-band 14s linear infinite;
+    mix-blend-mode: overlay;
+}
+
+button, a { cursor: pointer; }
+:focus-visible { outline: 1px solid var(--sand); outline-offset: 4px; }
